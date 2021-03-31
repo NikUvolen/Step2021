@@ -16,7 +16,7 @@ from Funcs.settings.warnings import Warnings
 database = peewee.SqliteDatabase(normpath('database/user_db.db'))
 vk_bot = VkBot(group_id=group_id, token=token)
 labels = DotDict({
-    'menu': ['Пройти викторину', 'Посмотреть свой счёт', 'Создать викторину']
+    'menu': ['Список викторин', 'Пройти викторину', 'Посмотреть свой счёт', 'Создать викторину']
 })
 
 
@@ -38,7 +38,7 @@ class UsersTable(BaseClass):
 
 
 class QuizTable(BaseClass):
-    id = peewee.ForeignKeyField(UsersTable)
+    user = peewee.ForeignKeyField(UsersTable)
     name_quiz = peewee.CharField(max_length=100)
     id_quiz = peewee.IntegerField()
 
@@ -58,6 +58,13 @@ class AnswersTable(BaseClass):
     current_answer = peewee.CharField(max_length=255)
 
 
+class UsersAnswers(BaseClass):
+    user = peewee.ForeignKeyField(UsersTable)
+    quiz = peewee.ForeignKeyField(QuizTable)
+    question_id = peewee.ForeignKeyField(QuestionsTable)
+    user_answer = peewee.CharField()
+
+
 """---------------------"""
 
 
@@ -68,6 +75,7 @@ def welcome_menu(message):
 
     if init_user(users_table=UsersTable, user_id=message.user_id, first_name=first_name, last_name=last_name):
         vk_bot.send_message(f'Добро пожаловать в DB-bot, {first_name}', message.user_id)
+        vk_bot.send_image(message.user_id, normpath('img/0LavqKKl_aA.jpg'))
 
     vk_bot.upload_keyboard(['Меню'])
     vk_bot.send_message('Нажмите на "меню", чтобы посмотреть все мои функции:', message.user_id, keyboard=True)
@@ -76,7 +84,17 @@ def welcome_menu(message):
 @vk_bot.message_handler(commands=['меню', 'Меню'])
 def menu(message):
     vk_bot.upload_keyboard(labels.menu, button_transfer=2)
-    vk_bot.send_message('Меню', message.user_id, keyboard=True)
+    vk_bot.send_message('Моё меню:', message.user_id, keyboard=True)
+
+
+@vk_bot.message_handler(commands=['список викторин', 'Список викторин'])
+def quiz_list(message):
+    list_quiz = [f'{q.id}) {q.name_quiz}' for num, q in enumerate(QuizTable.select())]
+    vk_bot.upload_keyboard(labels.menu, button_transfer=2)
+    instruction = '~ID викторины~ ) ~Название викторины~\n' + '{txt:-^80}\n'.format(txt='')
+    if len(list_quiz) == 0:
+        list_quiz.append('Пока тестов нет')
+    vk_bot.send_message(instruction + '\n'.join(list_quiz), message.user_id, keyboard=True)
 
 
 @vk_bot.message_handler(commands=['выйти', 'Выйти'])
@@ -128,6 +146,34 @@ def quiz(message):
     vk_bot.send_message('Введите id викторины', user_id=message.user_id)
 
 
+@vk_bot.message_handler(func=lambda message: UsersTable.get(UsersTable.id == message.user_id).state == 5)
+def take_quiz(message):
+    try:
+        quiz = QuizTable.get(QuizTable.id == message.body)
+    except Exception:
+        change_user_state(UsersTable, message.user_id, 0)
+
+        vk_bot.upload_keyboard(labels.menu, button_transfer=2)
+        vk_bot.send_message('Такого теста нет', message.user_id, keyboard=True)
+        return
+
+    change_user_state(UsersTable, message.user_id, 6)
+
+    file = open(normpath('database/intermediate_files.json'), 'r')
+    intermediate_files = json.load(file)
+    file.close()
+
+    intermediate_files[str(message.user_id)] = quiz.id
+
+    file = open(normpath('database/intermediate_files.json'), 'w')
+    json.dump(intermediate_files, file)
+    file.close()
+
+    vk_bot.upload_keyboard(['Начать викторину'])
+    vk_bot.send_message(f'Викторина "{quiz.name_quiz}" от пользователя {quiz.user.first_name} {quiz.user.last_name}',
+                        message.user_id, keyboard=True)
+
+
 @vk_bot.message_handler(commands=['создать викторину', 'Создать викторину'])
 def create_quiz(message):
     change_user_state(UsersTable, message.user_id, 2)
@@ -147,11 +193,11 @@ def create_quiz_2(message):
 
         print(message.body, message)
 
-        QuizTable.create(id=user, name_quiz=message.body, id_quiz=quiz_id)
+        quiz_id = QuizTable.create(user=user, name_quiz=message.body, id_quiz=quiz_id)
 
         file = open(normpath('database/intermediate_files.json'), 'r')
         intermediate_files = json.load(file)
-        intermediate_files[f"{user.id}"] = {'quiz_id': quiz_id}
+        intermediate_files[f"{user.id}"] = {'quiz_id': quiz_id.id}
         file.close()
 
         file = open(normpath('database/intermediate_files.json'), 'w')
@@ -159,7 +205,7 @@ def create_quiz_2(message):
         file.close()
 
         change_user_state(UsersTable, message.user_id, 3)
-        vk_bot.send_message(f'Ок, теперь введите вопрос №{user.on_question_state} '
+        vk_bot.send_message(f'Ок, теперь введите вопрос №{user.on_question_state + 2} '
                             '(Пример: "В каком году умер Пушкин?")',
                             message.user_id)
 
@@ -175,10 +221,10 @@ def questions(message):
         intermediate_files = json.load(file)
         file.close()
 
-        quiz = QuizTable.get(QuizTable.id_quiz == intermediate_files[str(user.id)]['quiz_id'])
+        quiz = QuizTable.get(QuizTable.id == intermediate_files[str(user.id)]['quiz_id'])
         QuestionsTable.create(id_quiz=quiz,
                               question=message.body,
-                              id_question=str(quiz.id_quiz) + f'_{user.on_question_state}')
+                              id_question=str(quiz.id) + f'_{user.on_question_state}')
 
         change_user_state(UsersTable, message.user_id, 4)
 
@@ -211,8 +257,8 @@ def answer(message):
     intermediate_files = json.load(file)
     file.close()
 
-    quiz = QuizTable.get(QuizTable.id_quiz == intermediate_files[f'{user.id}']['quiz_id'])
-    result = QuestionsTable.select().where(QuestionsTable.id_question == quiz.id_quiz + f'_{user.on_question_state}').get()
+    quiz = QuizTable.get(QuizTable.id == intermediate_files[f'{user.id}']['quiz_id'])
+    result = QuestionsTable.select().where(QuestionsTable.id_question == f'{quiz.id}_{user.on_question_state}').get()
 
     change_user_quest_state(UsersTable, message.user_id, user.on_question_state + 1)
 
@@ -230,54 +276,40 @@ def answer(message):
     vk_bot.send_message(f'Ок, теперь введите вопрос №{user.on_question_state}', message.user_id, keyboard=True)
 
 
-@vk_bot.message_handler(func=lambda message: UsersTable.get(UsersTable.id == message.user_id).state == 5)
-def take_quiz(message):
-    try:
-        quiz = QuizTable.get(QuizTable.id_quiz == message.body)
-    except Exception:
-        change_user_state(UsersTable, message.user_id, 0)
-
-        vk_bot.upload_keyboard(labels.menu, button_transfer=2)
-        vk_bot.send_message('Такого теста нет', message.user_id, keyboard=True)
-        return
-
-    change_user_state(UsersTable, message.user_id, 6)
-
-    file = open(normpath('database/intermediate_files.json'), 'r')
-    intermediate_files = json.load(file)
-    file.close()
-
-    intermediate_files[str(message.user_id)] = quiz.id_quiz
-
-    file = open(normpath('database/intermediate_files.json'), 'w')
-    json.dump(intermediate_files, file)
-    file.close()
-
-    vk_bot.upload_keyboard(['Начать викторину'])
-    vk_bot.send_message(f'Викторина "{quiz.name_quiz}" от пользователя {quiz.id.first_name} {quiz.id.last_name}',
-                        message.user_id, keyboard=True)
-
-
 @vk_bot.message_handler(func=lambda message: UsersTable.get(UsersTable.id == message.user_id).state == 6)
-def start_quiz(message):
+def st_quiz(message):
     file = open(normpath('database/intermediate_files.json'), 'r')
     intermediate_files = json.load(file)
     quiz_id = intermediate_files[str(message.user_id)]
     file.close()
 
     user_qState = UsersTable.get(UsersTable.id == message.user_id).on_question_state
+    if message.body.lower() != 'начать викторину':
+        UsersAnswers.create(user=message.user_id,
+                            quiz=QuizTable.get(QuizTable.id == quiz_id),
+                            question_id=user_qState - 1,
+                            user_answer=message.body)
+        current_answer = AnswersTable.get(AnswersTable.id_questions == QuestionsTable.get(QuestionsTable.id_question == f'{quiz_id}_{user_qState - 1}'))
+        if message.body == current_answer.current_answer:
+            user_score = UsersTable.get(UsersTable.id == message.user_id)
+            user_score.exp += 10
+            user_score.save()
+
     try:
         """Если вопросы ещё остались"""
 
-        question = QuestionsTable.select().where(QuestionsTable.id_question == quiz_id + f'_{user_qState}').get()
+        question = QuestionsTable.select().where(QuestionsTable.id_question == f'{quiz_id}_{user_qState}').get()
         answers = AnswersTable.select().where(AnswersTable.id_questions == question).get()
         answers_list = [answers.answer1, answers.answer2, answers.answer3, answers.answer4]
         answers_list = [elem for elem in answers_list if elem is not None]
 
+        print(message.body, answers.current_answer)
+
         change_user_quest_state(UsersTable, message.user_id, user_qState + 1)
 
         vk_bot.upload_keyboard(answers_list, button_transfer=len(answers_list) - 1)
-        vk_bot.send_message(f'Вопрос номер {user_qState}) {question.question}', message.user_id, keyboard=True)
+        print(user_qState)
+        vk_bot.send_message(f'Вопрос номер {user_qState + 1}) {question.question}', message.user_id, keyboard=True)
 
     except Exception:
         """Если вопросы закончились"""
@@ -296,4 +328,5 @@ def start_quiz(message):
         change_user_quest_state(UsersTable, message.user_id, 0)
 
         vk_bot.upload_keyboard(labels.menu, button_transfer=2)
-        vk_bot.send_message('Все вопросы закончились.', message.user_id, keyboard=True)
+        score = UsersTable.get(UsersTable.id == message.user_id).exp
+        vk_bot.send_message(f'Конец викторины. Ваш общий счёт {score} очков.', message.user_id)

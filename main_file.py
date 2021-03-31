@@ -9,6 +9,10 @@ app = Flask(__name__)
 @app.route('/', methods=['POST'])
 def runs():
     data = json.loads(request.data)
+
+    if data['type'] == "confirmation":
+        return "305ffdbf"
+
     if not data or 'type' not in data:
         return 'not ok'
     try:
@@ -23,6 +27,6 @@ def runs():
 if __name__ == '__main__':
     # Базы данных лежат в Funcs.settings.databases
     database.connect()
-    database.create_tables([UsersTable, QuizTable, QuestionsTable, AnswersTable])
+    database.create_tables([UsersTable, QuizTable, QuestionsTable, AnswersTable, UsersAnswers])
     # vk_bot._listen_longpoll()
     app.run()

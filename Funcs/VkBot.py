@@ -40,7 +40,7 @@ class SupportFunctions:
 
 
 class VkBot:
-    """Вк бот на базе Python 3.7"""
+    """Use Python 3.7"""
 
     def __init__(self, group_id, token):
         # logging.basicConfig(level=logging.ERROR, handlers=[logging.FileHandler('logs.log', 'w', 'utf-8')])
@@ -112,7 +112,7 @@ class VkBot:
             self._delete_keyboard()
 
     def message_handler(self, commands=None, func=None, **kwargs):
-        """ 'Пакует' функции в словрь, чтобы их вызывать дальше"""
+        """ 'Пакует' функции в словрь для их дальнейшего вызова"""
         def wrapper(handler):
             handler_dict = self.funcs.build_handler_dict(handler,
                                                          commands=commands,
