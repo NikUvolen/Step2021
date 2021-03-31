@@ -205,7 +205,7 @@ def create_quiz_2(message):
         file.close()
 
         change_user_state(UsersTable, message.user_id, 3)
-        vk_bot.send_message(f'Ок, теперь введите вопрос №{user.on_question_state + 2} '
+        vk_bot.send_message(f'Ок, теперь введите вопрос №{user.on_question_state + 1} '
                             '(Пример: "В каком году умер Пушкин?")',
                             message.user_id)
 
@@ -273,7 +273,7 @@ def answer(message):
     change_user_quest_state(UsersTable, message.user_id, user.on_question_state + 1)
 
     vk_bot.upload_keyboard(['Выйти'])
-    vk_bot.send_message(f'Ок, теперь введите вопрос №{user.on_question_state}', message.user_id, keyboard=True)
+    vk_bot.send_message(f'Ок, теперь введите вопрос №{user.on_question_state + 2}', message.user_id, keyboard=True)
 
 
 @vk_bot.message_handler(func=lambda message: UsersTable.get(UsersTable.id == message.user_id).state == 6)

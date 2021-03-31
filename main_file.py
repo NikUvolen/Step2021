@@ -28,5 +28,5 @@ if __name__ == '__main__':
     # Базы данных лежат в Funcs.settings.databases
     database.connect()
     database.create_tables([UsersTable, QuizTable, QuestionsTable, AnswersTable, UsersAnswers])
-    # vk_bot._listen_longpoll()
-    app.run()
+    vk_bot._listen_longpoll()
+    # app.run()
